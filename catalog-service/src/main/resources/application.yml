@@ -20,6 +20,11 @@ grpc:
   server:
     port: ${GRPC_SERVER_PORT:9082}
 
+showtime:
+  jwt:
+    signing-key: ${JWT_SIGNING_KEY:}
+    issuer: showtime-identity
+
 management:
   endpoints:
     web:
