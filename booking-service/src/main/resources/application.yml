@@ -32,6 +32,31 @@ showtime:
     base-url: ${PAYMENT_SERVICE_URL:http://localhost:8084}
   webhook:
     secret: ${PAYMENT_WEBHOOK_SECRET:}
+  jwt:
+    signing-key: ${JWT_SIGNING_KEY:}
+    issuer: showtime-identity
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      catalog:
+        sliding-window-size: 20
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 5
+      payment:
+        sliding-window-size: 20
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 5
+  retry:
+    instances:
+      # Catalog's two RPCs are pure reads, so bounded retries are safe here.
+      # There is no "retry" config for payment: creating a payment attempt
+      # is not idempotent to blindly repeat, so it is never retried.
+      catalog:
+        max-attempts: 3
+        wait-duration: 200ms
 
 management:
   endpoints:
