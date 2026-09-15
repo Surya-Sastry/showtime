@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package showtime.catalog.v1;
+
+option java_multiple_files = true;
+option java_package = "com.showtime.contracts.catalog.v1";
+option java_outer_classname = "CatalogProto";
+
+// CatalogQueryService is the only interface Booking uses to reach Catalog.
+// It is intentionally read-only and narrow: Booking never needs to mutate
+// Catalog state, only to validate a show/seat exists and fetch its price.
+//
+// Contract evolution rule: fields and RPCs are additive-only. A removed field
+// number is retired forever (documented below), never reused.
+service CatalogQueryService {
+  // GetShow returns show metadata needed to build/confirm a booking.
+  // Errors: NOT_FOUND if show_id does not exist.
+  rpc GetShow(GetShowRequest) returns (GetShowResponse);
+
+  // GetSeatDefinitions resolves seat labels/ids for a show's screen so
+  // Booking can validate a hold request without owning seat data itself.
+  // Errors: NOT_FOUND if show_id does not exist or any seat_id does not
+  // belong to that show's screen.
+  rpc GetSeatDefinitions(GetSeatDefinitionsRequest) returns (GetSeatDefinitionsResponse);
+}
+
+message GetShowRequest {
+  string show_id = 1;
+}
+
+message GetShowResponse {
+  string show_id = 1;
+  string movie_id = 2;
+  string screen_id = 3;
+  int64 starts_at_epoch_millis = 4;
+  int64 ends_at_epoch_millis = 5;
+  int32 ticket_price_cents = 6;
+  // reserved 7; // (example placeholder for future retired field policy)
+}
+
+message GetSeatDefinitionsRequest {
+  string show_id = 1;
+  repeated string seat_ids = 2;
+}
+
+message GetSeatDefinitionsResponse {
+  repeated SeatDefinition seats = 1;
+}
+
+message SeatDefinition {
+  string seat_id = 1;
+  string seat_label = 2;
+  string screen_id = 3;
+}
