@@ -1,0 +1,21 @@
+server:
+  port: ${SERVER_PORT:8084}
+
+spring:
+  application:
+    name: payment-service
+
+showtime:
+  webhook:
+    secret: ${PAYMENT_WEBHOOK_SECRET:}
+    booking-callback-url: ${BOOKING_WEBHOOK_URL:http://localhost:8083/internal/webhooks/payments}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
