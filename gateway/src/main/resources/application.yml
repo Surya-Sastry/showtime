@@ -6,25 +6,54 @@ spring:
     name: gateway
   cloud:
     gateway:
-      routes:
-        - id: identity
-          uri: ${IDENTITY_SERVICE_URL:http://localhost:8081}
-          predicates:
-            - Path=/api/v1/auth/**
-          filters:
-            - RewritePath=/api/v1/(?<segment>.*), /$\{segment}
-        - id: catalog
-          uri: ${CATALOG_SERVICE_URL:http://localhost:8082}
-          predicates:
-            - Path=/api/v1/movies/**,/api/v1/shows/**
-          filters:
-            - RewritePath=/api/v1/(?<segment>.*), /$\{segment}
-        - id: booking
-          uri: ${BOOKING_SERVICE_URL:http://localhost:8083}
-          predicates:
-            - Path=/api/v1/holds/**,/api/v1/bookings/**
-          filters:
-            - RewritePath=/api/v1/(?<segment>.*), /$\{segment}
+      server:
+        webflux:
+          routes:
+            - id: identity
+              uri: ${IDENTITY_SERVICE_URL:http://localhost:8081}
+              predicates:
+                - Path=/api/v1/auth/**
+              filters:
+                - RewritePath=/api/v1/(?<segment>.*), /$\{segment}
+            - id: catalog-movies
+              uri: ${CATALOG_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/api/v1/movies/**
+              filters:
+                - RewritePath=/api/v1/(?<segment>.*), /$\{segment}
+            # Catalog owns show scheduling and seat maps, but Booking owns
+            # /shows/{showId}/holds — a plain "/shows/**" predicate would
+            # wrongly swallow that too, so these two Catalog show routes are
+            # scoped to the exact sub-paths Catalog actually serves.
+            - id: catalog-shows-create
+              uri: ${CATALOG_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/api/v1/shows
+                - Method=POST
+              filters:
+                - RewritePath=/api/v1/(?<segment>.*), /$\{segment}
+            - id: catalog-shows-seats
+              uri: ${CATALOG_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/api/v1/shows/*/seats
+              filters:
+                - RewritePath=/api/v1/(?<segment>.*), /$\{segment}
+            - id: booking-holds
+              uri: ${BOOKING_SERVICE_URL:http://localhost:8083}
+              predicates:
+                - Path=/api/v1/shows/*/holds,/api/v1/holds/**
+              filters:
+                - RewritePath=/api/v1/(?<segment>.*), /$\{segment}
+            - id: booking-bookings
+              uri: ${BOOKING_SERVICE_URL:http://localhost:8083}
+              predicates:
+                - Path=/api/v1/bookings/**
+              filters:
+                - RewritePath=/api/v1/(?<segment>.*), /$\{segment}
+
+showtime:
+  correlation:
+    header-name: X-Request-Id
 
 management:
   endpoints:
@@ -35,3 +64,9 @@ management:
     health:
       probes:
         enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
