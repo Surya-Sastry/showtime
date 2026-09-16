@@ -1,0 +1,220 @@
+name: showtime
+
+services:
+  postgres-identity:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${IDENTITY_POSTGRES_USER:?set IDENTITY_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${IDENTITY_POSTGRES_PASSWORD:?set IDENTITY_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${IDENTITY_POSTGRES_DB:?set IDENTITY_POSTGRES_DB}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres-identity-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  postgres-catalog:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${CATALOG_POSTGRES_USER:?set CATALOG_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${CATALOG_POSTGRES_PASSWORD:?set CATALOG_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${CATALOG_POSTGRES_DB:?set CATALOG_POSTGRES_DB}
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - postgres-catalog-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  postgres-booking:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${BOOKING_POSTGRES_USER:?set BOOKING_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${BOOKING_POSTGRES_PASSWORD:?set BOOKING_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${BOOKING_POSTGRES_DB:?set BOOKING_POSTGRES_DB}
+    ports:
+      - "127.0.0.1:5435:5432"
+    volumes:
+      - postgres-booking-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # Trace collection/UI. No service exports to it yet (observability wiring
+  # is tracked separately) — it's here so that work only needs app-side
+  # OTel exporter config, not new infra.
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "127.0.0.1:16686:16686"
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+
+  # Local SMTP catcher. No service sends email yet (there is no
+  # notification worker in this MVP) — it's here for the same reason as
+  # Jaeger above.
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports:
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
+
+  identity-service:
+    image: localhost/showtime-identity:dev
+    build:
+      context: .
+      dockerfile: identity-service/Dockerfile
+    environment:
+      IDENTITY_DATABASE_URL: jdbc:postgresql://postgres-identity:5432/${IDENTITY_POSTGRES_DB:?set IDENTITY_POSTGRES_DB}
+      IDENTITY_DATABASE_USER: ${IDENTITY_POSTGRES_USER:?set IDENTITY_POSTGRES_USER}
+      IDENTITY_DATABASE_PASSWORD: ${IDENTITY_POSTGRES_PASSWORD:?set IDENTITY_POSTGRES_PASSWORD}
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY}
+    ports:
+      - "127.0.0.1:8081:8081"
+    depends_on:
+      postgres-identity:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8081/actuator/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    read_only: true
+    tmpfs: ["/tmp"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+
+  catalog-service:
+    image: localhost/showtime-catalog:dev
+    build:
+      context: .
+      dockerfile: catalog-service/Dockerfile
+    environment:
+      CATALOG_DATABASE_URL: jdbc:postgresql://postgres-catalog:5432/${CATALOG_POSTGRES_DB:?set CATALOG_POSTGRES_DB}
+      CATALOG_DATABASE_USER: ${CATALOG_POSTGRES_USER:?set CATALOG_POSTGRES_USER}
+      CATALOG_DATABASE_PASSWORD: ${CATALOG_POSTGRES_PASSWORD:?set CATALOG_POSTGRES_PASSWORD}
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY}
+    ports:
+      - "127.0.0.1:8082:8082"
+      - "127.0.0.1:9082:9082"
+    depends_on:
+      postgres-catalog:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8082/actuator/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    read_only: true
+    tmpfs: ["/tmp"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+
+  payment-service:
+    image: localhost/showtime-payment:dev
+    build:
+      context: .
+      dockerfile: payment-service/Dockerfile
+    environment:
+      PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:?set PAYMENT_WEBHOOK_SECRET}
+      BOOKING_WEBHOOK_URL: http://booking-service:8083/internal/webhooks/payments
+    ports:
+      - "127.0.0.1:8084:8084"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8084/actuator/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    read_only: true
+    tmpfs: ["/tmp"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+
+  booking-service:
+    image: localhost/showtime-booking:dev
+    build:
+      context: .
+      dockerfile: booking-service/Dockerfile
+    environment:
+      BOOKING_DATABASE_URL: jdbc:postgresql://postgres-booking:5432/${BOOKING_POSTGRES_DB:?set BOOKING_POSTGRES_DB}
+      BOOKING_DATABASE_USER: ${BOOKING_POSTGRES_USER:?set BOOKING_POSTGRES_USER}
+      BOOKING_DATABASE_PASSWORD: ${BOOKING_POSTGRES_PASSWORD:?set BOOKING_POSTGRES_PASSWORD}
+      REDIS_URL: redis://redis:6379
+      CATALOG_GRPC_ADDRESS: static://catalog-service:9082
+      PAYMENT_SERVICE_URL: http://payment-service:8084
+      PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:?set PAYMENT_WEBHOOK_SECRET}
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY}
+    ports:
+      - "127.0.0.1:8083:8083"
+    depends_on:
+      postgres-booking:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8083/actuator/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    read_only: true
+    tmpfs: ["/tmp"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+
+  gateway:
+    image: localhost/showtime-gateway:dev
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    environment:
+      IDENTITY_SERVICE_URL: http://identity-service:8081
+      CATALOG_SERVICE_URL: http://catalog-service:8082
+      BOOKING_SERVICE_URL: http://booking-service:8083
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      identity-service:
+        condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+      booking-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/actuator/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    read_only: true
+    tmpfs: ["/tmp"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+
+volumes:
+  postgres-identity-data:
+  postgres-catalog-data:
+  postgres-booking-data:
