@@ -31,3 +31,11 @@ management:
     health:
       probes:
         enabled: true
+  tracing:
+    sampling:
+      # Every request is traced. Fine at this scale; a production system
+      # would sample well below 100% to control collector/storage cost.
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}

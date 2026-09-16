@@ -55,6 +55,26 @@
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
     <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-tracing-bridge-otel</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-exporter-otlp</artifactId>
+    </dependency>
+    <!-- Traces the gRPC leg Booking->Catalog: a server interceptor here
+         creates a span for every RPC and continues the trace propagated in
+         gRPC metadata by Booking's matching client interceptor. -->
+    <!-- Not in the stable opentelemetry-instrumentation-bom (that BOM only
+         covers annotations/api/semconv/javaagent/spring-boot-starter);
+         per-framework library instrumentations ship "-alpha" versioned,
+         pinned explicitly here to match our BOM's train. -->
+    <dependency>
+      <groupId>io.opentelemetry.instrumentation</groupId>
+      <artifactId>opentelemetry-grpc-1.6</artifactId>
+      <version>${opentelemetry-instrumentation.version}-alpha</version>
+    </dependency>
+    <dependency>
       <groupId>net.devh</groupId>
       <artifactId>grpc-server-spring-boot-starter</artifactId>
     </dependency>
