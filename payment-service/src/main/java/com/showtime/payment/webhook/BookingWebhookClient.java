@@ -24,14 +24,22 @@ public class BookingWebhookClient {
     private final WebhookSigner signer;
     private final ObjectMapper objectMapper;
 
+    // Built from the injected, Spring-managed RestClient.Builder (not
+    // RestClient.builder()) so this call gets a client span like any other
+    // instrumented HTTP call. Note this does NOT continue the original
+    // checkout trace: a payment provider's webhook is a new inbound
+    // request with no causal link to whichever request created the
+    // payment, so it is correctly its own trace root, correlated to the
+    // original by bookingId/paymentId in logs rather than a shared trace ID.
     public BookingWebhookClient(
+            RestClient.Builder restClientBuilder,
             @Value("${showtime.webhook.booking-callback-url}") String bookingCallbackUrl,
             WebhookSigner signer,
             ObjectMapper objectMapper) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(2));
         requestFactory.setReadTimeout(Duration.ofSeconds(3));
-        this.restClient = RestClient.builder()
+        this.restClient = restClientBuilder
                 .baseUrl(bookingCallbackUrl)
                 .requestFactory(requestFactory)
                 .build();

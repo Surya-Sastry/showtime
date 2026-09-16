@@ -22,11 +22,16 @@ public class PaymentClient {
 
     private final RestClient restClient;
 
-    public PaymentClient(@Value("${showtime.payment.base-url}") String baseUrl) {
+    // Built from the injected, Spring-managed RestClient.Builder (not
+    // RestClient.builder()) so that Spring Boot's auto-configured
+    // observation/tracing customizer is applied: every call through this
+    // client gets a client span and propagates the current trace context
+    // to Payment via W3C traceparent headers.
+    public PaymentClient(RestClient.Builder restClientBuilder, @Value("${showtime.payment.base-url}") String baseUrl) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(2));
         requestFactory.setReadTimeout(Duration.ofSeconds(3));
-        this.restClient = RestClient.builder()
+        this.restClient = restClientBuilder
                 .baseUrl(baseUrl)
                 .requestFactory(requestFactory)
                 .build();
