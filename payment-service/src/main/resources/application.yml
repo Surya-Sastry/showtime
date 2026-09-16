@@ -10,6 +10,15 @@ showtime:
     secret: ${PAYMENT_WEBHOOK_SECRET:}
     booking-callback-url: ${BOOKING_WEBHOOK_URL:http://localhost:8083/internal/webhooks/payments}
 
+resilience4j:
+  retry:
+    instances:
+      # Safe to retry: Booking dedups deliveries by eventId, so a retried
+      # delivery of the same settled outcome cannot double-apply itself.
+      bookingWebhook:
+        max-attempts: 3
+        wait-duration: 200ms
+
 management:
   endpoints:
     web:
